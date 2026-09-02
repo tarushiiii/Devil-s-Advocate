@@ -7,6 +7,7 @@ import { CaseIntakeScreen } from "./components/CaseIntakeScreen";
 import { ProtocolScreen } from "./components/ProtocolScreen";
 import { InterrogationScreen } from "./components/InterrogationScreen";
 import { VerdictScreen } from "./components/VerdictScreen";
+import { RevisionCompare } from "./components/RevisionCompare";
 import { ExportModal } from "./components/ExportModal";
 import { soundFx } from "./lib/audio";
 
@@ -19,6 +20,12 @@ export default function App() {
   const [verdictData, setVerdictData] = useState<VerdictReport | null>(null);
   const [isSoundOn, setIsSoundOn] = useState(true);
   const [isExportOpen, setIsExportOpen] = useState(false);
+  const [isRevisionMode, setIsRevisionMode] = useState(false);
+  const [compareData, setCompareData] = useState<{
+    previous: VerdictReport;
+    current: VerdictReport;
+    previousAttempt: { decision: string; protocol: Protocol; personaKey: string };
+  } | null>(null);
 
   const handleToggleSound = () => {
     const newState = soundFx.toggleMute();
@@ -31,6 +38,8 @@ export default function App() {
     setDecisionCase(null);
     setTranscript([]);
     setVerdictData(null);
+    setIsRevisionMode(false);
+    setCompareData(null);
   };
 
   const handleEnterChamber = () => {
@@ -38,7 +47,9 @@ export default function App() {
   };
 
   const handleSubmitCase = (newCase: DecisionCase) => {
-    setDecisionCase(newCase);
+    // Preserve attempts when revising
+    const existingAttempts = decisionCase?.attempts || [];
+    setDecisionCase({ ...newCase, attempts: existingAttempts });
     setCurrentScreen("protocol");
   };
 
@@ -66,9 +77,24 @@ export default function App() {
       });
       const data = await res.json();
       setVerdictData(data);
+
+      // If revision mode, save this attempt and prepare compare
+      if (isRevisionMode && decisionCase?.attempts && decisionCase.attempts.length > 0) {
+        const previousAttempt = decisionCase.attempts[decisionCase.attempts.length - 1];
+        setCompareData({
+          previous: previousAttempt.verdict,
+          current: data,
+          previousAttempt: {
+            decision: previousAttempt.decision,
+            protocol: previousAttempt.protocol,
+            personaKey: previousAttempt.personaKey,
+          },
+        });
+        setCurrentScreen("compare");
+      }
     } catch {
       // Fallback verdict
-      setVerdictData({
+      const fallbackVerdict: VerdictReport = {
         score: 64,
         status: "STRUCTURALLY EXPOSED",
         diagnosis:
@@ -114,7 +140,22 @@ export default function App() {
             "Dark-store stock-out rates during peak weeks and the cascading impact on customer retention vs acquisition costs.",
           concludingDictum: "This decision has not yet earned its confidence.",
         },
-      });
+      };
+      setVerdictData(fallbackVerdict);
+
+      if (isRevisionMode && decisionCase?.attempts && decisionCase.attempts.length > 0) {
+        const previousAttempt = decisionCase.attempts[decisionCase.attempts.length - 1];
+        setCompareData({
+          previous: previousAttempt.verdict,
+          current: fallbackVerdict,
+          previousAttempt: {
+            decision: previousAttempt.decision,
+            protocol: previousAttempt.protocol,
+            personaKey: previousAttempt.personaKey,
+          },
+        });
+        setCurrentScreen("compare");
+      }
     }
   };
 
@@ -124,6 +165,61 @@ export default function App() {
 
   const handleNewCase = () => {
     setCurrentScreen("case");
+    setIsRevisionMode(false);
+    setCompareData(null);
+  };
+
+  const handleStartRevision = () => {
+    if (!decisionCase || !verdictData) return;
+
+    // Save the current attempt to the case's attempt history
+    const attemptId = (decisionCase.attempts?.length || 0) + 1;
+    const now = new Date();
+    const timestamp =
+      now.toTimeString().split(" ")[0] +
+      " " +
+      (Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC");
+
+    const newAttempt = {
+      id: attemptId,
+      decision: decisionCase.decision,
+      objective: decisionCase.objective,
+      stakeholders: decisionCase.stakeholders,
+      stakes: decisionCase.stakes,
+      protocol,
+      personaKey,
+      transcript,
+      verdict: verdictData,
+      timestamp,
+    };
+
+    setDecisionCase((prev) => ({
+      ...prev!,
+      attempts: [...(prev?.attempts || []), newAttempt],
+    }));
+
+    setIsRevisionMode(true);
+    setCurrentScreen("case");
+    soundFx.playGavel();
+  };
+
+  const handleViewPreviousAttempt = (attemptIndex: number) => {
+    const attempt = decisionCase?.attempts?.[attemptIndex];
+    if (!attempt) return;
+
+    setProtocol(attempt.protocol);
+    setPersonaKey(attempt.personaKey);
+    setTranscript(attempt.transcript);
+    setVerdictData(attempt.verdict);
+    setCompareData(null);
+    setIsRevisionMode(false);
+    setCurrentScreen("verdict");
+    soundFx.playKeyClick();
+  };
+
+  const handleCompareComplete = () => {
+    setCompareData(null);
+    setCurrentScreen("verdict");
   };
 
   return (
@@ -144,7 +240,11 @@ export default function App() {
         {currentScreen === "chamber" && <ChamberScreen onEnter={handleEnterChamber} />}
 
         {currentScreen === "case" && (
-          <CaseIntakeScreen initialCase={decisionCase} onSubmitCase={handleSubmitCase} />
+          <CaseIntakeScreen
+            initialCase={decisionCase}
+            onSubmitCase={handleSubmitCase}
+            isRevision={isRevisionMode}
+          />
         )}
 
         {currentScreen === "protocol" && (
@@ -160,6 +260,17 @@ export default function App() {
           />
         )}
 
+        {currentScreen === "compare" && compareData && (
+          <RevisionCompare
+            previousAttempt={compareData.previousAttempt}
+            previousVerdict={compareData.previous}
+            currentVerdict={compareData.current}
+            currentProtocol={protocol}
+            currentPersonaKey={personaKey}
+            onComplete={handleCompareComplete}
+          />
+        )}
+
         {currentScreen === "verdict" && decisionCase && (
           <VerdictScreen
             decisionCase={decisionCase}
@@ -168,6 +279,9 @@ export default function App() {
             onReopenInterrogation={handleReopenInterrogation}
             onNewCase={handleNewCase}
             onExport={() => setIsExportOpen(true)}
+            onStartRevision={handleStartRevision}
+            onViewAttempt={handleViewPreviousAttempt}
+            attemptCount={(decisionCase.attempts?.length || 0) + (verdictData ? 1 : 0)}
           />
         )}
       </main>

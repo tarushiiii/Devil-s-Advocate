@@ -2,16 +2,18 @@ import React, { useState } from "react";
 import { DecisionCase } from "../types";
 import { SAMPLE_CASES } from "../lib/sampleCases";
 import { soundFx } from "../lib/audio";
-import { ArrowRight, Sparkles, Loader2 } from "lucide-react";
+import { ArrowRight, Sparkles, Loader2, Pencil } from "lucide-react";
 
 interface CaseIntakeScreenProps {
   initialCase?: DecisionCase | null;
   onSubmitCase: (decisionCase: DecisionCase) => void;
+  isRevision?: boolean;
 }
 
 export const CaseIntakeScreen: React.FC<CaseIntakeScreenProps> = ({
   initialCase,
   onSubmitCase,
+  isRevision = false,
 }) => {
   const [decision, setDecision] = useState(initialCase?.decision || "");
   const [objective, setObjective] = useState(initialCase?.objective || "");
@@ -55,10 +57,15 @@ export const CaseIntakeScreen: React.FC<CaseIntakeScreenProps> = ({
     soundFx.playGavel();
     setIsSubmitting(true);
 
-    const depositionId = `#${Math.floor(100 + Math.random() * 900)}-${decision
-      .split(" ")[0]
-      .toUpperCase()
-      .replace(/[^A-Z]/g, "CASE")}-Q${Math.floor(Math.random() * 4) + 1}`;
+    const depositionId = isRevision
+      ? `#${Math.floor(100 + Math.random() * 900)}-${decision
+          .split(" ")[0]
+          .toUpperCase()
+          .replace(/[^A-Z]/g, "CASE")}-R${Math.floor(Math.random() * 9) + 1}`
+      : `#${Math.floor(100 + Math.random() * 900)}-${decision
+          .split(" ")[0]
+          .toUpperCase()
+          .replace(/[^A-Z]/g, "CASE")}-Q${Math.floor(Math.random() * 4) + 1}`;
 
     const now = new Date();
     const timestamp =
@@ -80,31 +87,51 @@ export const CaseIntakeScreen: React.FC<CaseIntakeScreenProps> = ({
 
   return (
     <div className="w-full max-w-4xl mx-auto px-4 md:px-8 py-8 md:py-12 flex flex-col min-h-screen pb-28">
+      {/* Revision Banner */}
+      {isRevision && (
+        <div className="bg-[#93000a]/30 border border-[#ffb4ab]/30 p-4 mb-6 flex items-center gap-3 animate-fade-in">
+          <Pencil className="w-4 h-4 text-[#ffb4ab] flex-shrink-0" />
+          <div className="flex flex-col">
+            <span className="font-label-caps text-[11px] text-[#ffb4ab] tracking-widest">
+              REVISION MODE
+            </span>
+            <span className="font-sans text-xs text-[#e4bdbc]/70 mt-0.5">
+              Edit any field below, then re-submit for another adversarial review. Your previous
+              attempt will be saved for comparison.
+            </span>
+          </div>
+        </div>
+      )}
+
       {/* Hero / Header Area */}
       <div className="py-6 md:py-8 border-b border-white/10 mb-8">
         <h1 className="font-display font-bold text-3xl sm:text-4xl md:text-5xl text-[#e2e2e2] tracking-tight leading-none mb-3">
-          State your case.
+          {isRevision ? "Revise your case." : "State your case."}
         </h1>
         <p className="text-[#e4bdbc]/70 font-mono-ui text-xs sm:text-sm uppercase tracking-widest max-w-2xl">
-          Enter the details of your proposed decision for adversarial review.
+          {isRevision
+            ? "Strengthen your position. Address the feedback from your prior attempt."
+            : "Enter the details of your proposed decision for adversarial review."}
         </p>
 
-        {/* Quick presets */}
-        <div className="mt-6 flex flex-wrap items-center gap-2">
-          <span className="font-label-caps text-[10px] text-[#e4bdbc]/50 tracking-wider flex items-center gap-1 mr-1">
-            <Sparkles className="w-3 h-3 text-[#e9c349]" /> PRESET CASES:
-          </span>
-          {SAMPLE_CASES.map((sample, idx) => (
-            <button
-              key={idx}
-              type="button"
-              onClick={() => handlePreload(sample)}
-              className="text-[11px] font-mono-ui bg-[#1e2020] hover:bg-[#282a2b] border border-white/10 text-[#e2e2e2] px-2.5 py-1 transition-colors rounded-none"
-            >
-              {sample.label}
-            </button>
-          ))}
-        </div>
+        {/* Quick presets - only show when not in revision mode */}
+        {!isRevision && (
+          <div className="mt-6 flex flex-wrap items-center gap-2">
+            <span className="font-label-caps text-[10px] text-[#e4bdbc]/50 tracking-wider flex items-center gap-1 mr-1">
+              <Sparkles className="w-3 h-3 text-[#e9c349]" /> PRESET CASES:
+            </span>
+            {SAMPLE_CASES.map((sample, idx) => (
+              <button
+                key={idx}
+                type="button"
+                onClick={() => handlePreload(sample)}
+                className="text-[11px] font-mono-ui bg-[#1e2020] hover:bg-[#282a2b] border border-white/10 text-[#e2e2e2] px-2.5 py-1 transition-colors rounded-none"
+              >
+                {sample.label}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Form Container */}
@@ -233,11 +260,11 @@ export const CaseIntakeScreen: React.FC<CaseIntakeScreenProps> = ({
               {isSubmitting ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>Processing Case</span>
+                  <span>{isRevision ? "Processing Revision" : "Processing Case"}</span>
                 </>
               ) : (
                 <>
-                  <span>Continue to Difficulty</span>
+                  <span>{isRevision ? "Submit Revision" : "Continue to Difficulty"}</span>
                   <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
                 </>
               )}

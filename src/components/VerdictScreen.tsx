@@ -1,7 +1,18 @@
 import React, { useState, useEffect } from "react";
 import { DecisionCase, TranscriptEntry, VerdictReport } from "../types";
 import { soundFx } from "../lib/audio";
-import { Fingerprint, AlertTriangle, Download, RotateCcw, Plus, Loader2 } from "lucide-react";
+import {
+  Fingerprint,
+  AlertTriangle,
+  Download,
+  RotateCcw,
+  Plus,
+  Loader2,
+  Pencil,
+  History,
+  ChevronRight,
+  Scale,
+} from "lucide-react";
 
 interface VerdictScreenProps {
   decisionCase: DecisionCase;
@@ -10,7 +21,16 @@ interface VerdictScreenProps {
   onReopenInterrogation: () => void;
   onNewCase: () => void;
   onExport: () => void;
+  onStartRevision: () => void;
+  onViewAttempt: (attemptIndex: number) => void;
+  attemptCount: number;
 }
+
+const personaLabels: Record<string, string> = {
+  cfo: "CFO",
+  competitor: "Rival CEO",
+  board: "MD",
+};
 
 export const VerdictScreen: React.FC<VerdictScreenProps> = ({
   decisionCase,
@@ -19,10 +39,16 @@ export const VerdictScreen: React.FC<VerdictScreenProps> = ({
   onReopenInterrogation,
   onNewCase,
   onExport,
+  onStartRevision,
+  onViewAttempt,
+  attemptCount,
 }) => {
   const [animatedScore, setAnimatedScore] = useState(0);
+  const [showHistory, setShowHistory] = useState(false);
 
   const finalScore = verdictData?.score ?? 0;
+  const attempts = decisionCase.attempts || [];
+  const hasPreviousAttempts = attempts.length > 0;
 
   // Animated score counter ticker
   useEffect(() => {
@@ -69,14 +95,26 @@ export const VerdictScreen: React.FC<VerdictScreenProps> = ({
     return "text-[#ffb4ab]";
   };
 
+  // Compute overall delta from previous attempt
+  const previousVerdict =
+    attempts.length > 0 ? attempts[attempts.length - 1].verdict : null;
+  const overallDelta = previousVerdict
+    ? verdictData.score - previousVerdict.score
+    : null;
+
   return (
     <div className="w-full max-w-4xl mx-auto px-4 md:px-8 py-8 md:py-12 flex flex-col min-h-screen pb-28">
       {/* Top Verdict Header */}
       <div className="border-b border-white/10 pb-8 mb-10">
-        <div className="mb-3">
+        <div className="flex items-center justify-between mb-3">
           <span className="font-label-caps text-xs text-[#e9c349] tracking-[0.25em]">
             FINAL VERDICT
           </span>
+          {attemptCount > 1 && (
+            <span className="font-mono-ui text-[10px] text-[#e4bdbc]/50 uppercase tracking-widest bg-[#1e2020] border border-white/10 px-2 py-1">
+              ATTEMPT {attemptCount}
+            </span>
+          )}
         </div>
 
         <div className="flex flex-wrap items-end gap-4 sm:gap-6 mb-6">
@@ -87,10 +125,25 @@ export const VerdictScreen: React.FC<VerdictScreenProps> = ({
             </span>
           </h1>
 
-          <div className="pb-2">
+          <div className="pb-2 flex items-center gap-3">
             <span className="bg-[#93000a] text-[#ffdad6] px-3 py-1.5 font-mono-ui text-xs sm:text-sm uppercase tracking-wider font-semibold border border-[#ffb4ab]/30 inline-block">
               {status}
             </span>
+            {overallDelta !== null && (
+              <span
+                className={`font-mono-ui text-sm font-bold flex items-center gap-1 ${
+                  overallDelta > 0
+                    ? "text-[#e9c349]"
+                    : overallDelta < 0
+                    ? "text-[#ffb4ab]"
+                    : "text-[#e4bdbc]/60"
+                }`}
+              >
+                <Scale className="w-3.5 h-3.5" />
+                {overallDelta >= 0 ? "+" : ""}
+                {overallDelta} from v{attemptCount - 1}
+              </span>
+            )}
           </div>
         </div>
 
@@ -222,15 +275,95 @@ export const VerdictScreen: React.FC<VerdictScreenProps> = ({
         </div>
       </div>
 
+      {/* Revision History */}
+      {hasPreviousAttempts && (
+        <div className="mb-8">
+          <button
+            type="button"
+            onClick={() => {
+              soundFx.playKeyClick();
+              setShowHistory(!showHistory);
+            }}
+            className="flex items-center gap-2 mb-4 group cursor-pointer"
+          >
+            <History className="w-4 h-4 text-[#e4bdbc]/60" />
+            <span className="font-label-caps text-xs text-[#e4bdbc]/60 tracking-widest group-hover:text-[#e2e2e2] transition-colors">
+              {showHistory ? "HIDE" : "VIEW"} REVISION HISTORY ({attempts.length} prior)
+            </span>
+            <ChevronRight
+              className={`w-3 h-3 text-[#e4bdbc]/40 transition-transform ${
+                showHistory ? "rotate-90" : ""
+              }`}
+            />
+          </button>
+
+          {showHistory && (
+            <div className="space-y-2 animate-fade-in">
+              {attempts.map((attempt, idx) => (
+                <button
+                  key={attempt.id}
+                  type="button"
+                  onClick={() => onViewAttempt(idx)}
+                  className="w-full text-left bg-[#121414] border border-white/5 hover:border-white/20 p-4 flex items-center justify-between transition-colors cursor-pointer group"
+                >
+                  <div className="flex items-center gap-4">
+                    <span className="font-mono-ui text-xs text-[#e4bdbc]/40 w-8">
+                      v{idx + 1}
+                    </span>
+                    <div className="flex flex-col">
+                      <span className="font-sans text-xs text-[#e2e2e2] truncate max-w-xs">
+                        {attempt.decision}
+                      </span>
+                      <span className="font-mono-ui text-[10px] text-[#e4bdbc]/40 mt-0.5">
+                        {attempt.protocol.toUpperCase()} ·{" "}
+                        {personaLabels[attempt.personaKey] || attempt.personaKey} ·{" "}
+                        {attempt.timestamp}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span
+                      className={`font-mono-ui text-sm font-bold ${
+                        attempt.verdict.score >= 80
+                          ? "text-[#e9c349]"
+                          : attempt.verdict.score >= 65
+                          ? "text-[#ffb3b1]"
+                          : "text-[#ffb4ab]"
+                      }`}
+                    >
+                      {attempt.verdict.score}/100
+                    </span>
+                    <ChevronRight className="w-3.5 h-3.5 text-[#e4bdbc]/30 group-hover:text-white group-hover:translate-x-0.5 transition-all" />
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Action Buttons */}
-      <div className="flex flex-col sm:flex-row gap-4 mt-auto pt-4">
+      <div className="flex flex-col sm:flex-row gap-3 mt-auto pt-4">
+        {/* Revise & Resubmit — primary CTA */}
+        <button
+          type="button"
+          onClick={() => {
+            soundFx.playGavel();
+            onStartRevision();
+          }}
+          className="flex-1 bg-[#c0152f] text-white hover:bg-[#ffb3b1] hover:text-[#680012] font-label-caps text-xs tracking-widest py-4 px-6 uppercase transition-all flex items-center justify-center gap-2 cursor-pointer"
+        >
+          <Pencil className="w-4 h-4" />
+          <span>Revise &amp; Resubmit</span>
+        </button>
+
         <button
           type="button"
           onClick={() => {
             soundFx.playGavel();
             onReopenInterrogation();
           }}
-          className="flex-1 bg-[#c0152f] text-white hover:bg-[#ffb3b1] hover:text-[#680012] font-label-caps text-xs tracking-widest py-4 px-6 uppercase transition-all flex items-center justify-center gap-2 cursor-pointer"
+          className="flex-1 bg-transparent border border-white/20 text-[#e2e2e2] hover:bg-white/5 font-label-caps text-xs tracking-widest py-4 px-6 uppercase transition-all flex items-center justify-center gap-2 cursor-pointer"
         >
           <RotateCcw className="w-4 h-4" />
           <span>Re-open Cross-Examination</span>
@@ -242,10 +375,10 @@ export const VerdictScreen: React.FC<VerdictScreenProps> = ({
             soundFx.playGavel();
             onExport();
           }}
-          className="flex-1 bg-transparent border border-white/20 text-[#e2e2e2] hover:bg-white/5 font-label-caps text-xs tracking-widest py-4 px-6 uppercase transition-all flex items-center justify-center gap-2 cursor-pointer"
+          className="bg-[#1e2020] border border-white/10 text-[#e4bdbc] hover:text-white font-label-caps text-xs tracking-widest py-4 px-4 uppercase transition-all flex items-center justify-center gap-1.5 cursor-pointer"
         >
           <Download className="w-4 h-4" />
-          <span>Export Brief (PDF / Text)</span>
+          <span className="hidden sm:inline">Export</span>
         </button>
 
         <button

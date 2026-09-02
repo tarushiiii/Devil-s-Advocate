@@ -1,6 +1,6 @@
 export type Protocol = 'polite' | 'brutal';
 
-export type Screen = 'chamber' | 'case' | 'protocol' | 'loading' | 'cross' | 'verdict';
+export type Screen = 'chamber' | 'case' | 'protocol' | 'loading' | 'cross' | 'verdict' | 'compare';
 
 export interface DecisionCase {
   decision: string;
@@ -9,6 +9,20 @@ export interface DecisionCase {
   stakes?: string;
   depositionId?: string;
   timestamp?: string;
+  attempts?: AttemptRecord[];
+}
+
+export interface AttemptRecord {
+  id: number;
+  decision: string;
+  objective: string;
+  stakeholders: string;
+  stakes?: string;
+  protocol: Protocol;
+  personaKey: string;
+  transcript: TranscriptEntry[];
+  verdict: VerdictReport;
+  timestamp: string;
 }
 
 export interface Persona {
