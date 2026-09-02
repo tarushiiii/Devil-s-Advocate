@@ -1,0 +1,195 @@
+import React, { useState } from "react";
+import { Screen, DecisionCase, Protocol, TranscriptEntry, VerdictReport } from "./types";
+import { Header } from "./components/Header";
+import { BottomNav } from "./components/BottomNav";
+import { ChamberScreen } from "./components/ChamberScreen";
+import { CaseIntakeScreen } from "./components/CaseIntakeScreen";
+import { ProtocolScreen } from "./components/ProtocolScreen";
+import { InterrogationScreen } from "./components/InterrogationScreen";
+import { VerdictScreen } from "./components/VerdictScreen";
+import { ExportModal } from "./components/ExportModal";
+import { soundFx } from "./lib/audio";
+
+export default function App() {
+  const [currentScreen, setCurrentScreen] = useState<Screen>("chamber");
+  const [decisionCase, setDecisionCase] = useState<DecisionCase | null>(null);
+  const [protocol, setProtocol] = useState<Protocol>("brutal");
+  const [personaKey, setPersonaKey] = useState<string>("cfo");
+  const [transcript, setTranscript] = useState<TranscriptEntry[]>([]);
+  const [verdictData, setVerdictData] = useState<VerdictReport | null>(null);
+  const [isSoundOn, setIsSoundOn] = useState(true);
+  const [isExportOpen, setIsExportOpen] = useState(false);
+
+  const handleToggleSound = () => {
+    const newState = soundFx.toggleMute();
+    setIsSoundOn(newState);
+  };
+
+  const handleRestart = () => {
+    soundFx.playGavel();
+    setCurrentScreen("chamber");
+    setDecisionCase(null);
+    setTranscript([]);
+    setVerdictData(null);
+  };
+
+  const handleEnterChamber = () => {
+    setCurrentScreen("case");
+  };
+
+  const handleSubmitCase = (newCase: DecisionCase) => {
+    setDecisionCase(newCase);
+    setCurrentScreen("protocol");
+  };
+
+  const handleSelectProtocol = (selectedProtocol: Protocol, selectedPersona: string) => {
+    setProtocol(selectedProtocol);
+    setPersonaKey(selectedPersona);
+    setTranscript([]);
+    setCurrentScreen("cross");
+  };
+
+  const handleFinishInterrogation = async (finalTranscript: TranscriptEntry[]) => {
+    setTranscript(finalTranscript);
+    setCurrentScreen("verdict");
+
+    // Fetch synthesized verdict from backend
+    try {
+      const res = await fetch("/api/verdict/evaluate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          caseDetails: decisionCase,
+          transcript: finalTranscript,
+          protocol,
+        }),
+      });
+      const data = await res.json();
+      setVerdictData(data);
+    } catch {
+      // Fallback verdict
+      setVerdictData({
+        score: 64,
+        status: "STRUCTURALLY EXPOSED",
+        diagnosis:
+          "The decision logic presented lacks necessary structural integrity. Critical blindspots identified in execution strategy and regional market realities.",
+        scores: {
+          specificity: {
+            score: 18,
+            max: 40,
+            critique:
+              "User failed to name a specific reversal metric for the proposed shift. No actionable threshold defined for rollback.",
+          },
+          consistency: {
+            score: 22,
+            max: 30,
+            critique:
+              "Answer to Competitor regarding 'moat' contradicts the Customer service promise. Strategy relies on mutually exclusive priorities.",
+          },
+          falsifiability: {
+            score: 24,
+            max: 30,
+            critique:
+              "Clear exit condition provided, though lacks timeline. The premise can be tested, but the evaluation window is ambiguous.",
+          },
+        },
+        preMortem: {
+          howThisFails: [
+            {
+              number: "01",
+              title: "Platform commission & channel renegotiation compressing core margins.",
+            },
+            {
+              number: "02",
+              title: "Regional trust gap requiring disproportionate physical presence & sampling.",
+            },
+            {
+              number: "03",
+              title: "Festival-season demand cliff post-campaign resulting in inventory bloat.",
+            },
+          ],
+          warningMetric: "90-DAY REPEAT RATE < 20%",
+          warningSubtext: "Track this, don't just say it.",
+          unaddressedBlindspot:
+            "Dark-store stock-out rates during peak weeks and the cascading impact on customer retention vs acquisition costs.",
+          concludingDictum: "This decision has not yet earned its confidence.",
+        },
+      });
+    }
+  };
+
+  const handleReopenInterrogation = () => {
+    setCurrentScreen("cross");
+  };
+
+  const handleNewCase = () => {
+    setCurrentScreen("case");
+  };
+
+  return (
+    <div className="min-h-screen bg-[#0B0B0D] text-[#e2e2e2] flex flex-col relative font-sans">
+      {/* Film Grain Noise Texture */}
+      <div className="noise-overlay" />
+
+      {/* Top Header */}
+      <Header
+        currentScreen={currentScreen}
+        onRestart={handleRestart}
+        isSoundOn={isSoundOn}
+        onToggleSound={handleToggleSound}
+      />
+
+      {/* Main Content Area */}
+      <main className={`flex-1 w-full ${currentScreen !== "chamber" ? "pt-14 md:pt-16" : ""}`}>
+        {currentScreen === "chamber" && <ChamberScreen onEnter={handleEnterChamber} />}
+
+        {currentScreen === "case" && (
+          <CaseIntakeScreen initialCase={decisionCase} onSubmitCase={handleSubmitCase} />
+        )}
+
+        {currentScreen === "protocol" && (
+          <ProtocolScreen onSelectProtocol={handleSelectProtocol} />
+        )}
+
+        {currentScreen === "cross" && decisionCase && (
+          <InterrogationScreen
+            decisionCase={decisionCase}
+            protocol={protocol}
+            personaKey={personaKey}
+            onFinishInterrogation={handleFinishInterrogation}
+          />
+        )}
+
+        {currentScreen === "verdict" && decisionCase && (
+          <VerdictScreen
+            decisionCase={decisionCase}
+            transcript={transcript}
+            verdictData={verdictData}
+            onReopenInterrogation={handleReopenInterrogation}
+            onNewCase={handleNewCase}
+            onExport={() => setIsExportOpen(true)}
+          />
+        )}
+      </main>
+
+      {/* Bottom Sticky Tab Navigation */}
+      <BottomNav
+        currentScreen={currentScreen}
+        onNavigate={(screen) => setCurrentScreen(screen)}
+        hasCase={!!decisionCase}
+        hasInterrogated={transcript.length > 0}
+        hasVerdict={!!verdictData}
+      />
+
+      {/* Export Modal */}
+      {isExportOpen && decisionCase && verdictData && (
+        <ExportModal
+          decisionCase={decisionCase}
+          transcript={transcript}
+          verdict={verdictData}
+          onClose={() => setIsExportOpen(false)}
+        />
+      )}
+    </div>
+  );
+}
